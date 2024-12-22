@@ -1,0 +1,125 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler, StandardScaler
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+
+
+
+df = pd.read_csv('Titanic-Dataset.csv') #File de dataset utilise
+
+# Partie 1 : Introduction au Dataset
+print("Types de donnees :")
+print(df.dtypes)
+
+
+print("\nPremieres lignes du dataset Titanic :")
+print(df.head())
+
+
+print("\nValeurs manquantes dans chaque colonne :")
+print(df.isnull().sum())
+print("\n")
+#------------------------------------------------------ Part 2
+
+miss_value = df.isnull().sum()
+print("Valeurs manquantes dans chaque colonne :")
+print(miss_value[miss_value > 0])
+
+
+numr_cols = df.select_dtypes(include=['float64', 'int64']).columns
+for col in numr_cols:
+    df[col] = df[col].fillna(df[col].mean()) 
+categorical_cols = df.select_dtypes(include=['object']).columns
+for col in categorical_cols:
+    df[col] = df[col].fillna(df[col].mode()[0])  
+threshold = 0.4 * len(df)  # 40 % des valeurs
+cols_to_drop = [col for col in df.columns if df[col].isnull().sum() > threshold]
+df.drop(columns=cols_to_drop, inplace=True)
+print("Colonnes supprimées en raison de trop de valeurs manquantes :", cols_to_drop)
+
+
+for col in numr_cols:
+    plt.figure(figsize=(10, 5))
+    sns.boxplot(x=df[col])
+    plt.title(f'Boxplot de {col}')
+    plt.show()
+
+def replace_outliers_with_median(df, column):
+    median = df[column].median()
+    q1 = df[column].quantile(0.25)
+    q3 = df[column].quantile(0.75)
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    
+    df[column] = df[column].where((df[column] >= lower_bound) & (df[column] <= upper_bound), median)
+
+
+for col in numr_cols:
+    replace_outliers_with_median(df, col)
+
+def drop_outliers(df, column):
+    q1 = df[column].quantile(0.25)
+    q3 = df[column].quantile(0.75)
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    
+    return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
+
+for col in numr_cols:
+    df = drop_outliers(df, col)
+
+print("DataFrame après nettoyage :")
+print(df.head())
+
+#------------------------------------------------------ Part 3
+categorical_cols = df.select_dtypes(include=['object']).columns
+
+for col in categorical_cols:
+    if df[col].nunique() <= 2:
+        df[col] = df[col].map({'male': 1, 'female': 0})
+    else:
+        df = pd.get_dummies(df, columns=[col], drop_first=True)
+
+ordinal_mapping = {'1ère classe': 1, '2ème classe': 2, '3ème classe': 3}
+df['Classe'] = df['Classe'].map(ordinal_mapping)
+
+numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+
+scaler_minmax = MinMaxScaler()
+df[numeric_cols] = scaler_minmax.fit_transform(df[numeric_cols])
+
+scaler_standard = StandardScaler()
+df[numeric_cols] = scaler_standard.fit_transform(df[numeric_cols])
+
+for col in numeric_cols:
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    sns.histplot(df[col], bins=30, kde=True)
+    plt.title(f'Distribution de {col} après normalisation/standardisation')
+    plt.subplot(1, 2, 2)
+    sns.histplot(df[col], bins=30, kde=True)
+    plt.title(f'Distribution de {col} après normalisation/standardisation')
+    plt.show()
+#------------------------------------------------------ Part 4
+target_col = 'Survie'
+class_distribution = df[target_col].value_counts()
+print("Distribution des classes :")
+print(class_distribution)
+
+undersampler = RandomUnderSampler(sampling_strategy='auto')
+X = df.drop(columns=[target_col])
+y = df[target_col]
+X_resampled, y_resampled = undersampler.fit_resample(X, y)
+
+print("Distribution après sous-échantillonnage :")
+print(y_resampled.value_counts())
+
+smote = SMOTE(sampling_strategy='auto')
+X_smote, y_smote = smote.fit_resample(X, y)
+
+print("Distribution après sur-échantillonnage avec SMOTE :")
+print(y_smote.value_counts())
